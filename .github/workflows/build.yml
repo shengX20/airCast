@@ -3,6 +3,8 @@ name: Build APK
 on:
   push:
     branches: [main]
+    tags:
+      - 'v*'
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -45,3 +47,23 @@ jobs:
         with:
           name: app-release
           path: app/build/outputs/apk/release/app-release.apk
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/app-debug/app-debug.apk
+            artifacts/app-release/app-release.apk
+          generate_release_notes: true
