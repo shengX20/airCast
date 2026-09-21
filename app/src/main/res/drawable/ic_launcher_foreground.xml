@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="1024"
+    android:viewportHeight="1024">
+
+    <!-- Sphere (HomePod mini metaphor) -->
+    <path android:pathData="M445,415 A170,170 0 1,0 445,755 A170,170 0 1,0 445,415 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="radial"
+                android:centerX="400"
+                android:centerY="530"
+                android:gradientRadius="240"
+                android:startColor="#2E3138"
+                android:endColor="#14161B" />
+        </aapt:attr>
+    </path>
+
+    <!-- Brass Power Dot on top -->
+    <path
+        android:fillColor="#E0A458"
+        android:pathData="M480,397 A22,22 0 1,0 480,441 A22,22 0 1,0 480,397 Z" />
+
+    <!-- Three sound wave arcs radiating to top-right -->
+    <!-- Arc 1: Radius 250 -->
+    <path
+        android:pathData="M691.2,541.6 A250,250 0 0,0 488.4,338.8"
+        android:strokeColor="#E8B465"
+        android:strokeWidth="44"
+        android:strokeLineCap="round" />
+
+    <!-- Arc 2: Radius 330 -->
+    <path
+        android:pathData="M770.0,527.7 A330,330 0 0,0 502.3,260.0"
+        android:strokeColor="#E0A458"
+        android:strokeWidth="44"
+        android:strokeLineCap="round" />
+
+    <!-- Arc 3: Radius 390 (adjusted to 66% Android adaptive icon safe zone) -->
+    <path
+        android:pathData="M829.0,517.0 A390,390 0 0,0 512.4,200.4"
+        android:strokeColor="#C98A3D"
+        android:strokeWidth="44"
+        android:strokeLineCap="round" />
+
+</vector>
