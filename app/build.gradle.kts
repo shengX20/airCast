@@ -7,6 +7,7 @@ plugins {
 android {
     namespace = "com.airplay.cast"
     compileSdk = 36
+    ndkVersion = "27.0.12077973"
 
     defaultConfig {
         applicationId = "com.airplay.cast"
