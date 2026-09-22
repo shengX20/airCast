@@ -46,7 +46,6 @@ class CastService : Service() {
     private var audioRecord: AudioRecord? = null
     private var captureThread: Thread? = null
     @Volatile private var capturing = false
-    @Volatile private var lastAudioTime = 0L
 
     private var wakeLock: PowerManager.WakeLock? = null
     private var savedVolume = -1
@@ -55,11 +54,7 @@ class CastService : Service() {
     private var currentVolume = DEFAULT_VOLUME
 
     private fun flog(msg: String) {
-        Log.e(TAG, msg)
-        try {
-            java.io.File(filesDir, "cast_log.txt").appendText(
-                "${java.text.SimpleDateFormat("HH:mm:ss.SSS").format(java.util.Date())} $msg\n")
-        } catch (_: Exception) {}
+        Log.i(TAG, msg)
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -139,40 +134,24 @@ class CastService : Service() {
         NativeBridge.setVolume(currentVolume)
         flog("Starting audio capture...")
         startAudioCapture()
-        flog("Audio capture started, watchdog running")
-
-        // Watchdog: if no audio data for 3 seconds, force-restart the AudioRecord
-        thread(name = "audio-watchdog") {
-            while (capturing) {
-                Thread.sleep(1500)
-                if (!capturing) break
-                val since = System.currentTimeMillis() - lastAudioTime
-                if (since > 3000) {
-                    flog("Watchdog: no audio for ${since}ms, restarting record")
-                    try { audioRecord?.stop() } catch (_: Exception) {}
-                    try { audioRecord?.release() } catch (_: Exception) {}
-                    audioRecord = null
-                    if (capturing) startAudioCapture()
-                }
-            }
-        }
 
         return START_STICKY
     }
 
-    private fun startAudioCapture() {
+    private fun createAudioRecord(): AudioRecord? {
+        val proj = mediaProjection ?: return null
         val sampleRate = 44100
         val channelConfig = AudioFormat.CHANNEL_IN_STEREO
         val audioFormat = AudioFormat.ENCODING_PCM_16BIT
         val minBuf = AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat)
         val bufSize = maxOf(minBuf * 4, 8820 * 4) // 400ms buffer at 44.1kHz stereo
 
-        val playbackConfig = AudioPlaybackCaptureConfiguration.Builder(mediaProjection!!)
+        val playbackConfig = AudioPlaybackCaptureConfiguration.Builder(proj)
             .addMatchingUsage(AudioAttributes.USAGE_MEDIA)
             .addMatchingUsage(AudioAttributes.USAGE_GAME)
             .build()
 
-        audioRecord = AudioRecord.Builder()
+        return AudioRecord.Builder()
             .setAudioFormat(
                 AudioFormat.Builder()
                     .setEncoding(audioFormat)
@@ -188,35 +167,72 @@ class CastService : Service() {
                 }
             }
             .build()
+    }
 
-        capturing = true
-        lastAudioTime = System.currentTimeMillis()
+    private fun startAudioCapture() {
+        stopAudioCapture()
+
+        val record = createAudioRecord() ?: run {
+            flog("Failed to build AudioRecord: mediaProjection is null")
+            return
+        }
+        audioRecord = record
+
         try {
-            audioRecord?.startRecording()
-            flog("Audio capture started (bufSize=$bufSize, state=${audioRecord?.state})")
+            record.startRecording()
+            flog("Audio capture started (state=${record.state})")
         } catch (e: Exception) {
             flog("startRecording failed: $e")
-            throw e
+            return
         }
 
+        capturing = true
         captureThread = thread(name = "audio-capture") {
-            val chunkSize = 44100 / 100 * 4 * 2  // 40ms = 3520 shorts
+            val chunkSize = 3528  // 40ms @ 44.1kHz stereo (44100 * 2 * 0.04)
             val buf = ShortArray(chunkSize)
             var firstRead = true
             try {
                 while (capturing) {
                     val rec = audioRecord ?: break
-                    val n = rec.read(buf, 0, buf.size)
+                    val n = try {
+                        rec.read(buf, 0, buf.size)
+                    } catch (e: Exception) {
+                        Log.w(TAG, "AudioRecord read exception: ${e.message}")
+                        -1
+                    }
+
                     if (n > 0) {
-                        lastAudioTime = System.currentTimeMillis()
                         if (firstRead) {
                             flog("First audio read: $n shorts")
                             firstRead = false
                         }
                         NativeBridge.feedAudio(buf, n)
-                    } else if (n < 0) {
-                        flog("read error: $n")
-                        Thread.sleep(100)
+                    } else if (n == 0) {
+                        // Buffer empty or playback paused: sleep briefly to avoid 100% CPU busy-loop
+                        try { Thread.sleep(10) } catch (_: InterruptedException) { break }
+                    } else {
+                        // n < 0: AudioRecord read error
+                        Log.w(TAG, "AudioRecord read error: $n")
+                        if (n == AudioRecord.ERROR_DEAD_OBJECT && capturing) {
+                            Log.e(TAG, "Audio server died, recreating AudioRecord...")
+                            try {
+                                rec.stop()
+                                rec.release()
+                            } catch (_: Exception) {}
+                            try { Thread.sleep(150) } catch (_: InterruptedException) { break }
+                            if (capturing) {
+                                try {
+                                    val newRec = createAudioRecord()
+                                    newRec?.startRecording()
+                                    audioRecord = newRec
+                                } catch (e: Exception) {
+                                    Log.e(TAG, "Recovery startRecording failed: $e")
+                                    try { Thread.sleep(500) } catch (_: InterruptedException) { break }
+                                }
+                            }
+                        } else {
+                            try { Thread.sleep(50) } catch (_: InterruptedException) { break }
+                        }
                     }
                 }
             } catch (e: Throwable) {
@@ -224,6 +240,16 @@ class CastService : Service() {
             }
             flog("Audio capture thread ended")
         }
+    }
+
+    private fun stopAudioCapture() {
+        capturing = false
+        try { audioRecord?.stop() } catch (_: Exception) {}
+        try { audioRecord?.release() } catch (_: Exception) {}
+        audioRecord = null
+        try { captureThread?.interrupt() } catch (_: Exception) {}
+        try { captureThread?.join(500) } catch (_: Exception) {}
+        captureThread = null
     }
 
     private fun buildNotification(text: String): Notification {
@@ -240,7 +266,7 @@ class CastService : Service() {
             Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE)
         return NotificationCompat.Builder(this, AirPlayApp.CHANNEL_CAST)
-            .setContentTitle("AirPlay Cast")
+            .setContentTitle("AirCast")
             .setContentText(text)
             .setSmallIcon(android.R.drawable.ic_media_play)
             .setContentIntent(openIntent)
@@ -257,10 +283,7 @@ class CastService : Service() {
     }
 
     private fun stopCast() {
-        capturing = false
-        try { audioRecord?.stop() } catch (_: Exception) {}
-        audioRecord?.release(); audioRecord = null
-        captureThread?.join(1000); captureThread = null
+        stopAudioCapture()
         try { NativeBridge.disconnect() } catch (_: Exception) {}
         try { mediaProjection?.stop() } catch (_: Exception) {}
         mediaProjection = null

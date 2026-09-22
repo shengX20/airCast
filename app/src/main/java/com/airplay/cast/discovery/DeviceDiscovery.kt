@@ -26,8 +26,11 @@ class DeviceDiscovery(private val context: Context) {
     var onError: ((String) -> Unit)? = null
 
     fun start() {
-        if (nsdManager != null) return
-        nsdManager = context.getSystemService(Context.NSD_SERVICE) as NsdManager
+        if (discoveryListener != null) {
+            stop()
+        }
+        val mgr = context.getSystemService(Context.NSD_SERVICE) as? NsdManager ?: return
+        nsdManager = mgr
 
         discoveryListener = object : NsdManager.DiscoveryListener {
             override fun onDiscoveryStarted(serviceType: String) {

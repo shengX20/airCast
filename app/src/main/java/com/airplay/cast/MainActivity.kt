@@ -66,8 +66,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -204,11 +208,15 @@ class MainActivity : ComponentActivity(), NativeBridge.Callbacks {
 
     override fun onPause() {
         super.onPause()
-        if (!_isCasting.value) discovery.stop()
+        scanTimeoutJob?.cancel()
+        _scanning.value = false
+        discovery.stop()
     }
 
     override fun onDestroy() {
         super.onDestroy()
+        scanTimeoutJob?.cancel()
+        discovery.stop()
         clickSound?.release()
     }
 
@@ -240,9 +248,16 @@ class MainActivity : ComponentActivity(), NativeBridge.Callbacks {
             .edit().putString("creds_$deviceId", credsJson).apply()
     }
 
+    private var scanTimeoutJob: Job? = null
+
     private fun triggerScan() {
         _scanning.value = true
         discovery.start()
+        scanTimeoutJob?.cancel()
+        scanTimeoutJob = lifecycleScope.launch {
+            delay(2400)
+            _scanning.value = false
+        }
     }
 
     @Composable
@@ -267,17 +282,22 @@ class MainActivity : ComponentActivity(), NativeBridge.Callbacks {
     private fun MainScreen() {
         val isScanning = _scanning.value
 
-        // Spinning animation for refresh button when scanning (900ms linear)
-        val infiniteTransition = rememberInfiniteTransition(label = "refresh_spin")
-        val spinAngle by infiniteTransition.animateFloat(
-            initialValue = 0f,
-            targetValue = 360f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(900, easing = LinearEasing),
-                repeatMode = RepeatMode.Restart
-            ),
-            label = "spin_angle"
-        )
+        // Spinning animation for refresh button ONLY when scanning (900ms linear)
+        val spinAngle = if (isScanning) {
+            val infiniteTransition = rememberInfiniteTransition(label = "refresh_spin")
+            val angle by infiniteTransition.animateFloat(
+                initialValue = 0f,
+                targetValue = 360f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(900, easing = LinearEasing),
+                    repeatMode = RepeatMode.Restart
+                ),
+                label = "spin_angle"
+            )
+            angle
+        } else {
+            0f
+        }
 
         Box(modifier = Modifier.fillMaxSize()) {
             Column(
@@ -316,7 +336,9 @@ class MainActivity : ComponentActivity(), NativeBridge.Callbacks {
                             tint = if (isScanning) AirCastTheme.Accent else AirCastTheme.TextSecondary,
                             modifier = Modifier
                                 .size(20.dp)
-                                .rotate(if (isScanning) spinAngle else 0f)
+                                .graphicsLayer {
+                                    rotationZ = spinAngle
+                                }
                         )
                     }
                 }

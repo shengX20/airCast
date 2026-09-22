@@ -26,6 +26,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -75,14 +76,14 @@ fun ScanningSkeletonView(
 
         // 3 Skeleton cards
         repeat(3) {
-            SkeletonCard(shimmerProgress = translateAnim)
+            SkeletonCard(shimmerProgress = { translateAnim })
         }
     }
 }
 
 @Composable
 private fun SkeletonCard(
-    shimmerProgress: Float,
+    shimmerProgress: () -> Float,
     modifier: Modifier = Modifier
 ) {
     Box(
@@ -95,16 +96,19 @@ private fun SkeletonCard(
                 color = AirCastTheme.Border,
                 shape = RoundedCornerShape(AirCastTheme.RadiusCard)
             )
-            .background(
-                brush = Brush.linearGradient(
-                    colors = listOf(
-                        AirCastTheme.BgSurface,
-                        Color(0xFF1E2129),
-                        AirCastTheme.BgSurface
-                    ),
-                    start = Offset(shimmerProgress * 1000f, 0f),
-                    end = Offset((shimmerProgress + 1f) * 1000f, 0f)
+            .drawBehind {
+                val p = shimmerProgress()
+                drawRect(
+                    brush = Brush.linearGradient(
+                        colors = listOf(
+                            AirCastTheme.BgSurface,
+                            Color(0xFF1E2129),
+                            AirCastTheme.BgSurface
+                        ),
+                        start = Offset(p * size.width * 1.5f, 0f),
+                        end = Offset((p + 1f) * size.width * 1.5f, 0f)
+                    )
                 )
-            )
+            }
     )
 }
