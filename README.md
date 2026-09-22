@@ -24,15 +24,15 @@
   <table>
     <tr>
       <td align="center" width="33%">
-        <img src="docs/screenshots/scanning.jpg" width="100%" alt="正在扫描设备" /><br />
+        <img src="https://imgchr.com/i/pnQb6Hg" width="100%" alt="正在扫描设备" /><br />
         <b>① 局域网扫描</b>
       </td>
       <td align="center" width="33%">
-        <img src="docs/screenshots/device_list.jpg" width="100%" alt="设备列表与正在投放" /><br />
+        <img src="https://imgchr.com/i/pnQb4g0" width="100%" alt="设备列表与正在投放" /><br />
         <b>② 设备列表与音频投射</b>
       </td>
       <td align="center" width="33%">
-        <img src="docs/screenshots/volume_knob.jpg" width="100%" alt="拟物复古音量旋钮" /><br />
+        <img src="https://imgchr.com/i/pnQb5vV" width="100%" alt="拟物复古音量旋钮" /><br />
         <b>③ 拟物复古音量旋钮</b>
       </td>
     </tr>
