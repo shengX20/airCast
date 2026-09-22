@@ -8,6 +8,11 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g. v1.0.0). If specified, directly creates a Release.'
+        required: false
+        default: 'v1.0.0'
 
 jobs:
   build:
@@ -38,16 +43,31 @@ jobs:
       - name: Build Release APK
         run: ./gradlew assembleRelease --no-daemon --stacktrace
 
-      - name: Prepare APKs for Release
+      - name: Prepare APKs
+        id: prep
         run: |
           mkdir -p release_apks
-          VERSION_TAG="${{ github.ref_name }}"
-          if [ -z "$VERSION_TAG" ] || [ "${{ startsWith(github.ref, 'refs/tags/v') }}" != "true" ]; then
-            VERSION_TAG="latest"
+          TAG_NAME="${{ github.ref_name }}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ github.event.inputs.version }}" ]; then
+            TAG_NAME="${{ github.event.inputs.version }}"
           fi
-          cp app/build/outputs/apk/release/app-release.apk "release_apks/AirCast-${VERSION_TAG}.apk"
-          cp app/build/outputs/apk/debug/app-debug.apk "release_apks/AirCast-${VERSION_TAG}-debug.apk"
-          echo "Prepared APKs:"
+          
+          IS_RELEASE="false"
+          if [[ "$TAG_NAME" =~ ^v[0-9] ]] || [ -n "${{ github.event.inputs.version }}" ]; then
+            IS_RELEASE="true"
+          fi
+          
+          if [ "$IS_RELEASE" = "true" ]; then
+            FILE_SUFFIX="${TAG_NAME}"
+          else
+            FILE_SUFFIX="latest"
+          fi
+
+          cp app/build/outputs/apk/release/app-release.apk "release_apks/AirCast-${FILE_SUFFIX}.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "release_apks/AirCast-${FILE_SUFFIX}-debug.apk"
+          
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+          echo "is_release=$IS_RELEASE" >> $GITHUB_OUTPUT
           ls -lh release_apks/
 
       - name: Upload Artifacts
@@ -57,13 +77,14 @@ jobs:
           path: release_apks/*
 
       - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: steps.prep.outputs.is_release == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          name: "AirCast ${{ github.ref_name }}"
+          name: "AirCast ${{ steps.prep.outputs.tag_name }}"
+          tag_name: ${{ steps.prep.outputs.tag_name }}
           files: |
-            release_apks/AirCast-${{ github.ref_name }}.apk
-            release_apks/AirCast-${{ github.ref_name }}-debug.apk
+            release_apks/AirCast-${{ steps.prep.outputs.tag_name }}.apk
+            release_apks/AirCast-${{ steps.prep.outputs.tag_name }}-debug.apk
           generate_release_notes: true
           draft: false
           prerelease: false
